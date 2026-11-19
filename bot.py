@@ -104,7 +104,7 @@ FUNNY_CALL_TEMPLATES = [
     "{mention} — <b>تعالى شوف {caller}، ده واخد الجروب لحسابه وشكله هيصدعنا</b> 👑😂",
     "{mention} — <b>يا معلم، {caller} بيستفزنا من الصبح وشكله هيصدعنا</b> 😈🤣",
     "{mention} — <b>إلحق يا كبير، {caller} ناوي على خناقة وشكله هيصدعنا</b> 🥊😂",
-    "{mention} — <b>يا مشرف، {caller} عايزك تحكم بينهم وشكله هيصدعنا</b>  referees 😅",
+    "{mention} — <b>يا مشرف، {caller} عايزك تحكم بينهم وشكله هيصدعنا</b> 😅⚖️",
     "{mention} — <b>بص مين بينده، {caller} صوته جايب آخر الشارع وشكله هيصدعنا</b> 📣😂",
     "{mention} — <b>تعالى لمّ صاحبك {caller}، شكله هيصدعنا في الفاضي</b> 😂💨",
     "{mention} — <b>يا ريس، {caller} مسك في الكلمة وشكله هيصدعنا</b> 🗣️🤣",
@@ -215,6 +215,18 @@ def escape_html(text):
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
+
+
+def _normalize_ar(text):
+    t = (text or "").strip().lower()
+    t = (
+        t.replace("أ", "ا")
+        .replace("إ", "ا")
+        .replace("آ", "ا")
+        .replace("ى", "ي")
+        .replace("ة", "ه")
+    )
+    return " ".join(t.split())
 
 
 def is_chat_admin(chat_id, user_id):
@@ -883,7 +895,7 @@ def finish_spy_game(chat_id):
     del active_games[chat_id]
 
 
-# ================= 4. الرد التلقائي على الكلمات =================
+# ================= 4. الرد التلقائي على الكلمات (بدون ريبلاي + داخل الجملة) =================
 @bot.message_handler(func=lambda m: True, content_types=["text"])
 def handle_auto_replies(message):
     if message.from_user and not message.from_user.is_bot:
@@ -894,27 +906,46 @@ def handle_auto_replies(message):
 
     cid = str(message.chat.id)
     chat_replies = auto_replies.get(cid, {})
-    txt = message.text.strip().lower()
+    if not chat_replies:
+        return
 
-    if txt in chat_replies:
-        entries = _get_word_entries(cid, txt)
-        if not entries:
-            return
-        item = random.choice(entries)
-        media_type = item.get("media_type", "none")
-        media_id = item.get("media_id")
-        caption = item.get("text") or None
+    norm_msg = _normalize_ar(message.text)
+    matched_word = None
 
-        try:
-            if media_type == "photo" and media_id:
-                bot.send_photo(message.chat.id, media_id, caption=caption)
-            elif media_type == "video" and media_id:
-                bot.send_video(message.chat.id, media_id, caption=caption)
-            else:
-                if caption:
-                    bot.send_message(message.chat.id, caption)
-        except Exception as e:
-            print(f"[ERROR] sending auto reply: {e}")
+    for word in chat_replies.keys():
+        if _normalize_ar(word) == norm_msg:
+            matched_word = word
+            break
+
+    if not matched_word:
+        for word in chat_replies.keys():
+            nw = _normalize_ar(word)
+            if nw and nw in norm_msg:
+                matched_word = word
+                break
+
+    if not matched_word:
+        return
+
+    entries = _get_word_entries(cid, matched_word)
+    if not entries:
+        return
+
+    item = random.choice(entries)
+    media_type = item.get("media_type", "none")
+    media_id = item.get("media_id")
+    caption = item.get("text") or None
+
+    try:
+        if media_type == "photo" and media_id:
+            bot.send_photo(message.chat.id, media_id, caption=caption)
+        elif media_type == "video" and media_id:
+            bot.send_video(message.chat.id, media_id, caption=caption)
+        else:
+            if caption:
+                bot.send_message(message.chat.id, caption)
+    except Exception as e:
+        print(f"[ERROR] sending auto reply: {e}")
 
 
 if __name__ == "__main__":
