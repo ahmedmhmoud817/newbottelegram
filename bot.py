@@ -2,6 +2,7 @@ import json
 import os
 import random
 import sys
+import threading
 import time
 import telebot
 from telebot import types
@@ -16,58 +17,64 @@ bot = telebot.TeleBot(TOKEN)
 REPLIES_FILE = "replies.json"
 ADMINS_FILE = "admins.json"
 
-# 50 مكان للعبة الجسوس (أثري وعادي)
+BOT_INFO = None
+try:
+    BOT_INFO = bot.get_me()
+except Exception:
+    BOT_INFO = None
+
+# 50 مكان للعبة الجسوس (أثري وعادي) مع تلميح عام للجاسوس
 LOCATIONS = [
-    {"name": "الأهرامات وأبو الهول", "type": "أثري"},
-    {"name": "معبد الكرنك بالأقصر", "type": "أثري"},
-    {"name": "معبد الأقصر", "type": "أثري"},
-    {"name": "قلعة صلاح الدين الأيوبي", "type": "أثري"},
-    {"name": "المتحف المصري الكبير", "type": "أثري"},
-    {"name": "المتحف المصري بالتحرير", "type": "أثري"},
-    {"name": "مقابر وادي الملوك", "type": "أثري"},
-    {"name": "معبد حتشبسوت بالدير البحري", "type": "أثري"},
-    {"name": "معبد أبو سمبل", "type": "أثري"},
-    {"name": "قلعة قايتباي بالإسكندرية", "type": "أثري"},
-    {"name": "مكتبة الإسكندرية القديمة والحديثة", "type": "أثري"},
-    {"name": "مسرح الروماني بالإسكندرية", "type": "أثري"},
-    {"name": "عمود السواري", "type": "أثري"},
-    {"name": "شارع المعز لدين الله الفاطمي", "type": "أثري"},
-    {"name": "خان الخليلي التاريخي", "type": "أثري"},
-    {"name": "مسجد السلطان حسن", "type": "أثري"},
-    {"name": "مسجد الرفاعي", "type": "أثري"},
-    {"name": "مسجد ابن طولون", "type": "أثري"},
-    {"name": "باب زويلة", "type": "أثري"},
-    {"name": "قصر عابدين", "type": "أثري"},
-    {"name": "قصر المنتزه", "type": "أثري"},
-    {"name": "معبد فيلة بأسوان", "type": "أثري"},
-    {"name": "معبد إدفو", "type": "أثري"},
-    {"name": "معبد كوم أمبو", "type": "أثري"},
-    {"name": "مقابر بني حسن بالمنيا", "type": "أثري"},
-    {"name": "مقهى بلدي على القهوة", "type": "عادي"},
-    {"name": "مول تجاري كبير", "type": "عادي"},
-    {"name": "مستشفى عام", "type": "عادي"},
-    {"name": "محطة مترو الأنفاق", "type": "عادي"},
-    {"name": "ملعب كرة قدم", "type": "عادي"},
-    {"name": "مطار دولي", "type": "عادي"},
-    {"name": "سوق شعبي", "type": "عادي"},
-    {"name": "سوبر ماركت كبير", "type": "عادي"},
-    {"name": "مخبز بلدي", "type": "عادي"},
-    {"name": "مطعم فول وطعمية", "type": "عادي"},
-    {"name": "مطعم مشويات", "type": "عادي"},
-    {"name": "كافيه مودرن", "type": "عادي"},
-    {"name": "سينما", "type": "عادي"},
-    {"name": "حديقة عامة أو ملاهي", "type": "عادي"},
-    {"name": "صالة جيم رياضية", "type": "عادي"},
-    {"name": "مدرسة أو جامعة", "type": "عادي"},
-    {"name": "مكتبة عامة", "type": "عادي"},
-    {"name": "موقف أتوبيسات أو ميكروباصات", "type": "عادي"},
-    {"name": "محطة قطار", "type": "عادي"},
-    {"name": "بنك", "type": "عادي"},
-    {"name": "صيدلية", "type": "عادي"},
-    {"name": "محل حلاقة", "type": "عادي"},
-    {"name": "ورشة ميكانيكا أو صيانة", "type": "عادي"},
-    {"name": "شاطئ بحر", "type": "عادي"},
-    {"name": "فندق سياحي", "type": "عادي"},
+    {"name": "الأهرامات وأبو الهول", "type": "أثري", "hint": "مكان سياحي مفتوح وفيه تاريخ قديم جداً"},
+    {"name": "معبد الكرنك بالأقصر", "type": "أثري", "hint": "أعمدة وتماثيل فرعونية في الصعيد"},
+    {"name": "معبد الأقصر", "type": "أثري", "hint": "أثر فرعوني في قلب مدينة الأقصر"},
+    {"name": "قلعة صلاح الدين الأيوبي", "type": "أثري", "hint": "مكان مرتفع له أسوار وتاريخ إسلامي"},
+    {"name": "المتحف المصري الكبير", "type": "أثري", "hint": "مكان عرض قطع أثرية وتماثيل ملوك"},
+    {"name": "المتحف المصري بالتحرير", "type": "أثري", "hint": "متحف قديم ومشهور وسط البلد"},
+    {"name": "مقابر وادي الملوك", "type": "أثري", "hint": "مقابر منحوتة في الصخر تحت الأرض"},
+    {"name": "معبد حتشبسوت بالدير البحري", "type": "أثري", "hint": "معبد مدرج منحوت في الجبل"},
+    {"name": "معبد أبو سمبل", "type": "أثري", "hint": "تماثيل ضخمة في أقصى الجنوب"},
+    {"name": "قلعة قايتباي بالإسكندرية", "type": "أثري", "hint": "قلعة بحرية على البحر المتوسط"},
+    {"name": "مكتبة الإسكندرية القديمة والحديثة", "type": "أثري", "hint": "مكان للكتب والقراءة والثقافة"},
+    {"name": "مسرح الروماني بالإسكندرية", "type": "أثري", "hint": "مدرجات قديمة على الطراز الروماني"},
+    {"name": "عمود السواري", "type": "أثري", "hint": "عمود جرانيتي ضخم وسط الإسكندرية"},
+    {"name": "شارع المعز لدين الله الفاطمي", "type": "أثري", "hint": "شارع تراثي مليان مساجد وبيوت قديمة"},
+    {"name": "خان الخليلي التاريخي", "type": "أثري", "hint": "سوق قديم للتحف والهدايا والنحاس"},
+    {"name": "مسجد السلطان حسن", "type": "أثري", "hint": "مسجد أثري ضخم وقبة ومئذنة عالية"},
+    {"name": "مسجد الرفاعي", "type": "أثري", "hint": "مسجد تاريخي قريب من القلعة"},
+    {"name": "مسجد ابن طولون", "type": "أثري", "hint": "من أقدم المساجد في مصر ومئذنته حلزونية"},
+    {"name": "باب زويلة", "type": "أثري", "hint": "بوابة تاريخية قديمة من سور القاهرة"},
+    {"name": "قصر عابدين", "type": "أثري", "hint": "قصر ملكي قديم ومتاحف داخلية"},
+    {"name": "قصر المنتزه", "type": "أثري", "hint": "قصر وحدائق واسعة مطلة على البحر"},
+    {"name": "معبد فيلة بأسوان", "type": "أثري", "hint": "معبد وسط المياه في أسوان"},
+    {"name": "معبد إدفو", "type": "أثري", "hint": "معبد فرعوني محفوظ بحالة ممتازة"},
+    {"name": "معبد كوم أمبو", "type": "أثري", "hint": "معبد مزدوج على النيل مرتبط بالتماسيح"},
+    {"name": "مقابر بني حسن بالمنيا", "type": "أثري", "hint": "مقابر صخرية قديمة في صعيد مصر"},
+    {"name": "مقهى بلدي على القهوة", "type": "عادي", "hint": "شاي وقهوة ودومينو وطاولة"},
+    {"name": "مول تجاري كبير", "type": "عادي", "hint": "محلات ملابس وأسانسيرات وفود كورت"},
+    {"name": "مستشفى عام", "type": "عادي", "hint": "أطباء وممرضين وطوارئ وروشتات"},
+    {"name": "محطة مترو الأنفاق", "type": "عادي", "hint": "تذاكر وبوابات وقطر تحت الأرض"},
+    {"name": "ملعب كرة قدم", "type": "عادي", "hint": "كورة وجون ومدرجات وصفارة حكم"},
+    {"name": "مطار دولي", "type": "عادي", "hint": "طيارات وشنط سفر وجوازات وبوابات إقلاع"},
+    {"name": "سوق شعبي", "type": "عادي", "hint": "فصال في الأسعار وخضار وهدوم وحركة زحمة"},
+    {"name": "سوبر ماركت كبير", "type": "عادي", "hint": "عربيات تسوق ورفوف وكاشير"},
+    {"name": "مخبز بلدي", "type": "عادي", "hint": "عيش سخن وفرن ودقيق وطوابير"},
+    {"name": "مطعم فول وطعمية", "type": "عادي", "hint": "فطار شعبي وسندوتشات وطحينة"},
+    {"name": "مطعم مشويات", "type": "عادي", "hint": "فحم وكباب وكفتة ودخان شواء"},
+    {"name": "كافيه مودرن", "type": "عادي", "hint": "لاتيه وواي فاي وقعدة هادية"},
+    {"name": "سينما", "type": "عادي", "hint": "شاشة كبيرة وضلمة وفيلم وفشار"},
+    {"name": "حديقة عامة أو ملاهي", "type": "عادي", "hint": "خضرة أو ألعاب وضحك وفسحة"},
+    {"name": "صالة جيم رياضية", "type": "عادي", "hint": "أوزان وبنش ودمبلز وتمرين"},
+    {"name": "مدرسة أو جامعة", "type": "عادي", "hint": "محاضرات أو حصص وامتحانات وكتب"},
+    {"name": "مكتبة عامة", "type": "عادي", "hint": "هدوء ورفوف كتب ومذاكرة"},
+    {"name": "موقف أتوبيسات أو ميكروباصات", "type": "عادي", "hint": "سواقين وحجز كراسي ومشاوير"},
+    {"name": "محطة قطار", "type": "عادي", "hint": "أرصفة وقطر مسافات طويلة وتذاكر"},
+    {"name": "بنك", "type": "عادي", "hint": "فلوس وحسابات وأرقام انتظار وخزنة"},
+    {"name": "صيدلية", "type": "عادي", "hint": "أدوية وعلاج وتركيبات واستشارة"},
+    {"name": "محل حلاقة", "type": "عادي", "hint": "مقص ومكنة وذقن ومراية"},
+    {"name": "ورشة ميكانيكا أو صيانة", "type": "عادي", "hint": "عربيات ومفاتيح وزيت ومسامير"},
+    {"name": "شاطئ بحر", "type": "عادي", "hint": "رملة وموج وشمسية وبحر"},
+    {"name": "فندق سياحي", "type": "عادي", "hint": "ريسبشن وغرف وإقامة ونزلاء"},
 ]
 
 # 100 عبارة مضحكة ورايقة لنداء المشرفين
@@ -196,9 +203,10 @@ def save_json(path, data):
 auto_replies = load_json(REPLIES_FILE, {})
 group_admins = load_json(ADMINS_FILE, {})
 
-adding_reply_state = {}      # user_id -> dict
-deleting_reply_state = set() # user_id set
-active_games = {}           # chat_id -> game_dict
+adding_reply_state = {}
+deleting_reply_state = set()
+active_games = {}
+games_lock = threading.Lock()
 
 
 def format_user_name(user):
@@ -227,6 +235,13 @@ def _normalize_ar(text):
         .replace("ة", "ه")
     )
     return " ".join(t.split())
+
+
+def get_bot_dm_link():
+    uname = (BOT_INFO.username if BOT_INFO and BOT_INFO.username else "").strip()
+    if uname:
+        return f"https://t.me/{uname}?start=spy"
+    return None
 
 
 def is_chat_admin(chat_id, user_id):
@@ -296,6 +311,13 @@ def clear_user_states(user_id):
 def send_help_menu(message):
     if message.chat.type != "private":
         register_group_admin(message.chat.id, message.from_user)
+    else:
+        bot.send_message(
+            message.chat.id,
+            "✅ <b>تم تفعيل الخاص مع البوت بنجاح!</b>\nارجع للجروب وشارك في لعبة الجسوس عشان يوصلك مكان الجولة أو دور الجاسوس.",
+            parse_mode="HTML"
+        )
+        return
 
     text = (
         "⚡ <b>أهلاً بك في بوت Pro Max</b> ⚡\n"
@@ -304,12 +326,11 @@ def send_help_menu(message):
         "• <code>اضافة رد</code> — إضافة كلمة + بايو + صورة أو فيديو\n"
         "• <code>عرض الردود</code> — عرض الكلمات وحذفها بزراير فورية\n"
         "• <code>حذف رد</code> أو <code>حذف رد الكلمة</code> — حذف رد محدد\n\n"
-        "🕵️‍♂️ <b>لعبة الجسوس (أقل عدد 3 لاعبين):</b>\n"
-        "• <code>الجسوس</code> — فتح غرفة لعب والتصويت لكشف الجاسوس\n"
+        "🕵️‍♂️ <b>لعبة الجسوس + رادار الشبهات (أقل عدد 3 لاعبين):</b>\n"
+        "• <code>الجسوس</code> — فتح غرفة لعب + تلميح الجاسوس + رادار الشبهات والتصويت\n"
         "• <code>انهاء الجسوس</code> — إنهاء جولة عالقة في الجروب\n\n"
         "🚨 <b>نداء المشرفين:</b>\n"
-        "• <code>نداء مشرف</code> — اختيار مشرف ومنشنته بعبارات مضحكة\n\n"
-        "💡 <i>ملاحظة:</i> في لعبة الجسوس لازم اللاعبين يدخلوا يكلموا البوت في الخاص الأول عشان يوصله المكان أو دور الجاسوس."
+        "• <code>نداء مشرف</code> — اختيار مشرف ومنشنته بعبارات مضحكة"
     )
     bot.send_message(message.chat.id, text, parse_mode="HTML")
 
@@ -651,25 +672,53 @@ def handle_mod_call_click(call):
     bot.send_message(call.message.chat.id, chosen, parse_mode="HTML")
 
 
-# ================= 3. لعبة الجسوس (أقل عدد 3 لاعبين + 50 مكان) =================
+# ================= 3. لعبة الجسوس + ميزة "رادار الشبهات وتلميح الجاسوس" =================
 def build_lobby_markup(chat_id):
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🙋‍♂️ انضم للعبة", callback_data=f"spy_join:{chat_id}"))
+    markup.add(
+        types.InlineKeyboardButton("🙋‍♂️ انضم", callback_data=f"spy_join:{chat_id}"),
+        types.InlineKeyboardButton("🚪 خروج", callback_data=f"spy_leave:{chat_id}")
+    )
     markup.add(types.InlineKeyboardButton("🚀 ابدأ اللعبة (3 لاعبين فأكثر)", callback_data=f"spy_start:{chat_id}"))
+    dm_link = get_bot_dm_link()
+    if dm_link:
+        markup.add(types.InlineKeyboardButton("📩 افتح الخاص للبوت (مهم)", url=dm_link))
+    return markup
+
+
+def build_playing_markup(chat_id, game):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    suspicion_counts = {}
+    for accused in game["votes"].values():
+        suspicion_counts[accused] = suspicion_counts.get(accused, 0) + 1
+
+    btns = []
+    for pid, pname in game["players"].items():
+        cnt = suspicion_counts.get(pid, 0)
+        badge = f" ({cnt}🔥)" if cnt > 0 else ""
+        btns.append(
+            types.InlineKeyboardButton(
+                text=f"🎯 {pname[:18]}{badge}",
+                callback_data=f"spy_vote:{chat_id}:{pid}"
+            )
+        )
+    markup.add(*btns)
+    markup.add(types.InlineKeyboardButton("🏁 إعلان النتيجة الآن", callback_data=f"spy_endnow:{chat_id}"))
     return markup
 
 
 @bot.message_handler(func=lambda m: m.text and m.text.strip() in ["انهاء الجسوس", "إنهاء الجسوس"])
 def cancel_spy_game(message):
     chat_id = message.chat.id
-    if chat_id not in active_games:
-        bot.send_message(chat_id, "مفيش لعبة جسوس شغالة حالياً.")
-        return
-    game = active_games[chat_id]
-    if message.from_user.id != game["creator_id"] and not is_chat_admin(chat_id, message.from_user.id):
-        bot.send_message(chat_id, "إنهاء اللعبة متاح لمنشئ اللعبة أو الأدمنز فقط.")
-        return
-    del active_games[chat_id]
+    with games_lock:
+        if chat_id not in active_games:
+            bot.send_message(chat_id, "مفيش لعبة جسوس شغالة حالياً.")
+            return
+        game = active_games[chat_id]
+        if message.from_user.id != game["creator_id"] and not is_chat_admin(chat_id, message.from_user.id):
+            bot.send_message(chat_id, "إنهاء اللعبة متاح لمنشئ اللعبة أو الأدمنز فقط.")
+            return
+        del active_games[chat_id]
     bot.send_message(chat_id, "🛑 تم إنهاء لعبة الجسوس.")
 
 
@@ -680,29 +729,31 @@ def create_spy_game(message):
         return
 
     chat_id = message.chat.id
-    if chat_id in active_games and active_games[chat_id]["phase"] in ["lobby", "playing"]:
-        bot.send_message(chat_id, "⚠️ فيه لعبة جسوس شغالة أو مستنية لاعبين حالياً في الجروب! (اكتب انهاء الجسوس لإلغائها).")
-        return
+    with games_lock:
+        if chat_id in active_games and active_games[chat_id]["phase"] in ["lobby", "playing"]:
+            bot.send_message(chat_id, "⚠️ فيه لعبة جسوس شغالة أو مستنية لاعبين حالياً في الجروب! (اكتب انهاء الجسوس لإلغائها).")
+            return
 
-    creator = message.from_user
-    creator_name = format_user_name(creator)
+        creator = message.from_user
+        creator_name = format_user_name(creator)
 
-    active_games[chat_id] = {
-        "phase": "lobby",
-        "creator_id": creator.id,
-        "players": {creator.id: creator_name},
-        "spy_id": None,
-        "location": None,
-        "votes": {},
-        "started_at": time.time(),
-    }
+        active_games[chat_id] = {
+            "phase": "lobby",
+            "creator_id": creator.id,
+            "players": {creator.id: creator_name},
+            "spy_id": None,
+            "location": None,
+            "votes": {},
+            "vote_msg_id": None,
+            "started_at": time.time(),
+        }
 
     text = (
-        "🕵️‍♂️ <b>بدأت غرفة لعبة الجسوس!</b>\n"
+        "🕵️‍♂️ <b>بدأت غرفة لعبة الجسوس (نسخة الرادار)!</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "• أقل عدد لاعبين: <b>3 لاعبين</b>\n"
-        "• الفكرة: الكل هيعرف المكان (هل هو <b>أثري</b> ولا <b>عادي</b>) في الخاص ما عدا <b>الجاسوس</b>!\n"
-        "• اسألوا بعض هل المكان ده أثري ولا عادي وحاولوا تكشفوا الجاسوس.\n\n"
+        "• الكل هيعرف المكان (<b>أثري</b> ولا <b>عادي</b>) في الخاص ما عدا <b>الجاسوس</b> اللي بياخد تلميح غامض!\n"
+        "• اسألوا بعض هل المكان أثري ولا عادي، وراقبوا <b>رادار الشبهات</b> لحظة بلحظة!\n\n"
         f"👥 اللاعبون المنضمون (1):\n1. {escape_html(creator_name)}"
     )
     bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=build_lobby_markup(chat_id))
@@ -711,29 +762,72 @@ def create_spy_game(message):
 @bot.callback_query_handler(func=lambda call: call.data and call.data.startswith("spy_join:"))
 def spy_join_callback(call):
     chat_id = int(call.data.split(":")[1])
-    game = active_games.get(chat_id)
-    if not game or game["phase"] != "lobby":
-        bot.answer_callback_query(call.id, "مفيش غرفة انضمام مفتوحة دلوقتي.", show_alert=True)
-        return
+    with games_lock:
+        game = active_games.get(chat_id)
+        if not game or game["phase"] != "lobby":
+            bot.answer_callback_query(call.id, "مفيش غرفة انضمام مفتوحة دلوقتي.", show_alert=True)
+            return
 
-    user = call.from_user
-    if user.is_bot:
-        return
+        user = call.from_user
+        if not user or user.is_bot:
+            return
 
-    name = format_user_name(user)
-    if user.id in game["players"]:
-        bot.answer_callback_query(call.id, "أنت منضم بالفعل 👍")
-        return
+        name = format_user_name(user)
+        if user.id in game["players"]:
+            bot.answer_callback_query(call.id, "أنت منضم بالفعل 👍")
+            return
 
-    game["players"][user.id] = name
+        game["players"][user.id] = name
+        players_snapshot = list(game["players"].values())
+
     bot.answer_callback_query(call.id, "تم انضمامك للعبة ✅")
-
-    players_list = "\n".join([f"{i+1}. {escape_html(p)}" for i, p in enumerate(game["players"].values())])
+    players_list = "\n".join([f"{i+1}. {escape_html(p)}" for i, p in enumerate(players_snapshot)])
     text = (
-        "🕵️‍♂️ <b>غرفة لعبة الجسوس!</b>\n"
+        "🕵️‍♂️ <b>غرفة لعبة الجسوس (نسخة الرادار)!</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "• أقل عدد لاعبين: <b>3 لاعبين</b>\n\n"
-        f"👥 اللاعبون المنضمون ({len(game['players'])}):\n{players_list}"
+        f"👥 اللاعبون المنضمون ({len(players_snapshot)}):\n{players_list}"
+    )
+    try:
+        bot.edit_message_text(
+            text,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            parse_mode="HTML",
+            reply_markup=build_lobby_markup(chat_id)
+        )
+    except Exception:
+        pass
+
+
+@bot.callback_query_handler(func=lambda call: call.data and call.data.startswith("spy_leave:"))
+def spy_leave_callback(call):
+    chat_id = int(call.data.split(":")[1])
+    uid = call.from_user.id if call.from_user else None
+    if not uid:
+        return
+
+    with games_lock:
+        game = active_games.get(chat_id)
+        if not game or game["phase"] != "lobby":
+            bot.answer_callback_query(call.id, "مش متاح الخروج دلوقتي.", show_alert=True)
+            return
+        if uid not in game["players"]:
+            bot.answer_callback_query(call.id, "أنت مش منضم أصلاً.", show_alert=True)
+            return
+        del game["players"][uid]
+        players_snapshot = list(game["players"].values())
+
+    bot.answer_callback_query(call.id, "تم خروجك من الغرفة 👋")
+    players_list = (
+        "\n".join([f"{i+1}. {escape_html(p)}" for i, p in enumerate(players_snapshot)])
+        if players_snapshot else "لا يوجد لاعبين حالياً"
+    )
+    text = (
+        "🕵️‍♂️ <b>غرفة لعبة الجسوس (نسخة الرادار)!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "• أقل عدد لاعبين: <b>3 لاعبين</b>\n\n"
+        f"👥 اللاعبون المنضمون ({len(players_snapshot)}):\n{players_list}"
     )
     try:
         bot.edit_message_text(
@@ -750,36 +844,58 @@ def spy_join_callback(call):
 @bot.callback_query_handler(func=lambda call: call.data and call.data.startswith("spy_start:"))
 def spy_start_callback(call):
     chat_id = int(call.data.split(":")[1])
-    game = active_games.get(chat_id)
-    if not game or game["phase"] != "lobby":
-        bot.answer_callback_query(call.id, "اللعبة مش في مرحلة الانتظار.", show_alert=True)
-        return
+    with games_lock:
+        game = active_games.get(chat_id)
+        if not game or game["phase"] != "lobby":
+            bot.answer_callback_query(call.id, "اللعبة مش في مرحلة الانتظار.", show_alert=True)
+            return
+        all_players = dict(game["players"])
 
-    player_ids = list(game["players"].keys())
-    if len(player_ids) < 3:
+    if len(all_players) < 3:
         bot.answer_callback_query(
             call.id,
-            f"⚠️ اللعبة متشتغلش غير بـ 3 لاعبين على الأقل! (الحالي: {len(player_ids)})",
+            f"⚠️ اللعبة متشتغلش غير بـ 3 لاعبين على الأقل! (الحالي: {len(all_players)})",
             show_alert=True
         )
         return
 
-    spy_id = random.choice(player_ids)
     location = random.choice(LOCATIONS)
 
-    game["phase"] = "playing"
-    game["spy_id"] = spy_id
-    game["location"] = location
-    game["votes"] = {}
+    # نختبر مين يقدر يستقبل رسالة خاصة من البوت عشان نبدأ فوراً بدون تعليق
+    reachable_players = {}
+    unreachable_names = []
+    for pid, pname in all_players.items():
+        try:
+            bot.send_chat_action(pid, "typing")
+            reachable_players[pid] = pname
+        except Exception:
+            unreachable_names.append(pname)
 
-    failed_dm = []
-    for pid, pname in game["players"].items():
+    if len(reachable_players) < 3:
+        dm_link = get_bot_dm_link()
+        extra = f"\nافتح الخاص من هنا: {dm_link}" if dm_link else "\nابعت للبوت /start في الخاص الأول."
+        names_str = "، ".join([escape_html(x) for x in unreachable_names])
+        bot.answer_callback_query(call.id, "لازم 3 لاعبين على الأقل يكونوا فاتحين الخاص للبوت!", show_alert=True)
+        bot.send_message(
+            chat_id,
+            f"⚠️ عشان نبدأ لازم 3 لاعبين على الأقل يكونوا فاتحين الخاص للبوت.\n"
+            f"اللاعبون اللي محتاجين يضغطوا Start في الخاص: <b>{names_str}</b>{extra}",
+            parse_mode="HTML"
+        )
+        return
+
+    spy_id = random.choice(list(reachable_players.keys()))
+
+    dm_errors = []
+    for pid, pname in reachable_players.items():
         try:
             if pid == spy_id:
                 bot.send_message(
                     pid,
-                    "🕵️‍♂️ <b>أنت الجاسوس!</b>\n"
-                    "مش هتعرف اسم المكان ولا نوعه. ركز في أسئلة الناس لبعض (هل المكان أثري ولا عادي؟) وحاول تبان إنك فاهم من غير ما تتكشف!",
+                    f"🕵️‍♂️ <b>أنت الجاسوس!</b>\n"
+                    f"مش هتعرف اسم المكان بالظبط، بس معاك تلميح:\n"
+                    f"💡 <i>{escape_html(location['hint'])}</i>\n\n"
+                    f"اسمع أسئلة الناس (المكان ده أثري ولا عادي؟) وحاول تموّه من غير ما تتكشف!",
                     parse_mode="HTML"
                 )
             else:
@@ -787,45 +903,48 @@ def spy_start_callback(call):
                     pid,
                     f"📍 <b>المكان هو:</b> {escape_html(location['name'])}\n"
                     f"🏛️ <b>نوع المكان:</b> {escape_html(location['type'])}\n\n"
-                    "اسألوا بعض في الجروب: المكان ده أثري ولا عادي؟ وراقبوا مين اللي مش عارف التفاصيل!",
+                    f"اسألوا بعض في الجروب: <b>المكان ده أثري ولا عادي؟</b> وراقبوا مين اللي مش عارف التفاصيل!",
                     parse_mode="HTML"
                 )
         except Exception:
-            failed_dm.append(pname)
+            dm_errors.append(pname)
 
-    if failed_dm:
-        game["phase"] = "lobby"
-        names_str = "، ".join([escape_html(x) for x in failed_dm])
-        bot.answer_callback_query(call.id, "بعض اللاعبين لم يفتحوا الخاص للبوت!", show_alert=True)
-        bot.send_message(
-            chat_id,
-            f"⚠️ مقدرتش أبعت رسالة خاصة لـ: {names_str}\n"
-            f"لازم يدخلوا يكلموا البوت في الخاص الأول ويضغطوا Start، وبعدين اضغطوا <b>ابدأ اللعبة</b> تاني.",
-            parse_mode="HTML"
-        )
+    active_ids = [pid for pid in reachable_players if pid not in {k for k, v in reachable_players.items() if v in dm_errors}]
+    if len(active_ids) < 3:
+        bot.answer_callback_query(call.id, "حصلت مشكلة في إرسال الرسائل الخاصة.", show_alert=True)
         return
 
-    bot.answer_callback_query(call.id, "تم إرسال الأدوار في الخاص ✅")
+    if spy_id not in active_ids:
+        spy_id = random.choice(active_ids)
 
-    vote_markup = types.InlineKeyboardMarkup(row_width=2)
-    vote_btns = [
-        types.InlineKeyboardButton(
-            text=f"🎯 {pname[:24]}",
-            callback_data=f"spy_vote:{chat_id}:{pid}"
-        )
-        for pid, pname in game["players"].items()
-    ]
-    vote_markup.add(*vote_btns)
+    final_players = {pid: reachable_players[pid] for pid in active_ids}
 
-    bot.send_message(
+    with games_lock:
+        game["phase"] = "playing"
+        game["players"] = final_players
+        game["spy_id"] = spy_id
+        game["location"] = location
+        game["votes"] = {}
+        game["started_at"] = time.time()
+
+    bot.answer_callback_query(call.id, "تم إرسال الأدوار وبدأت الجولة 🔥")
+
+    notice = ""
+    if unreachable_names:
+        notice = f"\n⚠️ <i>ملاحظة: تم بدء الجولة باللاعبين الجاهزين (واللي مقفلين الخاص يضغطوا Start للجولات الجاية).</i>"
+
+    sent_msg = bot.send_message(
         chat_id,
-        "🔥 <b>اللعبة بدأت!</b>\n"
-        "تم إرسال المكان في الخاص للجميع ما عدا الجاسوس.\n"
-        "ابدأوا اسألوا بعض: <b>المكان ده أثري ولا عادي؟</b>\n\n"
-        "ولما تحددوا مين الجاسوس، اختاروا اسمه من الزراير تحت 👇",
+        f"🔥 <b>اللعبة بدأت ومعاها رادار الشبهات!</b>\n"
+        f"• عدد المشاركين: <b>{len(final_players)}</b>\n"
+        f"• اسألوا بعض: <b>المكان ده أثري ولا عادي؟</b>\n"
+        f"• اضغط على اسم أي شخص شايفه مريب عشان يرفع نسبة الشبهة عليه في الرادار 👇{notice}",
         parse_mode="HTML",
-        reply_markup=vote_markup
+        reply_markup=build_playing_markup(chat_id, active_games[chat_id])
     )
+    with games_lock:
+        if chat_id in active_games:
+            active_games[chat_id]["vote_msg_id"] = sent_msg.message_id
 
 
 @bot.callback_query_handler(func=lambda call: call.data and call.data.startswith("spy_vote:"))
@@ -833,46 +952,83 @@ def spy_vote_callback(call):
     _, chat_id_str, accused_id_str = call.data.split(":")
     chat_id = int(chat_id_str)
     accused_id = int(accused_id_str)
-    voter_id = call.from_user.id
+    voter_id = call.from_user.id if call.from_user else None
 
-    game = active_games.get(chat_id)
-    if not game or game["phase"] != "playing":
-        bot.answer_callback_query(call.id, "الجولة دي خلصت أو مش شغالة.", show_alert=True)
-        return
+    with games_lock:
+        game = active_games.get(chat_id)
+        if not game or game["phase"] != "playing":
+            bot.answer_callback_query(call.id, "الجولة دي خلصت أو مش شغالة.", show_alert=True)
+            return
 
-    if voter_id not in game["players"]:
-        bot.answer_callback_query(call.id, "أنت مش مشارك في الجولة دي.", show_alert=True)
-        return
+        if voter_id not in game["players"]:
+            bot.answer_callback_query(call.id, "أنت مش مشارك في الجولة دي.", show_alert=True)
+            return
 
-    game["votes"][voter_id] = accused_id
-    accused_name = game["players"].get(accused_id, "لاعب")
-    bot.answer_callback_query(call.id, f"تم تسجيل صوتك ضد {accused_name} ✅")
+        game["votes"][voter_id] = accused_id
+        accused_name = game["players"].get(accused_id, "لاعب")
+        all_voted = len(game["votes"]) == len(game["players"])
+        vote_msg_id = game.get("vote_msg_id")
+        markup_snapshot = build_playing_markup(chat_id, game)
+        votes_count = len(game["votes"])
+        total_players = len(game["players"])
 
-    if len(game["votes"]) == len(game["players"]):
+    bot.answer_callback_query(call.id, f"📡 الرادار سجل شبهتك في {accused_name} ({votes_count}/{total_players})")
+
+    if all_voted:
         finish_spy_game(chat_id)
+    elif vote_msg_id:
+        try:
+            bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=vote_msg_id,
+                reply_markup=markup_snapshot
+            )
+        except Exception:
+            pass
+
+
+@bot.callback_query_handler(func=lambda call: call.data and call.data.startswith("spy_endnow:"))
+def spy_endnow_callback(call):
+    chat_id = int(call.data.split(":")[1])
+    uid = call.from_user.id if call.from_user else None
+
+    with games_lock:
+        game = active_games.get(chat_id)
+        if not game or game["phase"] != "playing":
+            bot.answer_callback_query(call.id, "الجولة مش شغالة.", show_alert=True)
+            return
+        if uid not in game["players"] and not is_chat_admin(chat_id, uid):
+            bot.answer_callback_query(call.id, "المشاركون أو الأدمنز فقط يمكنهم إنهاء الجولة.", show_alert=True)
+            return
+
+    bot.answer_callback_query(call.id, "تم إعلان النتيجة ✅")
+    finish_spy_game(chat_id)
 
 
 def finish_spy_game(chat_id):
-    game = active_games.get(chat_id)
-    if not game:
-        return
-
-    game["phase"] = "finished"
-    spy_id = game["spy_id"]
-    spy_name = game["players"].get(spy_id, "الجاسوس")
-    loc = game["location"]
+    with games_lock:
+        game = active_games.get(chat_id)
+        if not game or game["phase"] == "finished":
+            return
+        game["phase"] = "finished"
+        spy_id = game["spy_id"]
+        spy_name = game["players"].get(spy_id, "الجاسوس")
+        loc = game["location"]
+        players_copy = dict(game["players"])
+        votes_copy = dict(game["votes"])
+        del active_games[chat_id]
 
     tally = {}
-    for target in game["votes"].values():
+    for target in votes_copy.values():
         tally[target] = tally.get(target, 0) + 1
 
     most_voted_id = max(tally.items(), key=lambda x: x[1])[0] if tally else None
-    most_voted_name = game["players"].get(most_voted_id, "لا أحد")
+    most_voted_name = players_copy.get(most_voted_id, "لا أحد")
 
     votes_lines = []
-    for vid, tid in game["votes"].items():
-        v_name = escape_html(game["players"].get(vid, "لاعب"))
-        t_name = escape_html(game["players"].get(tid, "لاعب"))
+    for vid, tid in votes_copy.items():
+        v_name = escape_html(players_copy.get(vid, "لاعب"))
+        t_name = escape_html(players_copy.get(tid, "لاعب"))
         votes_lines.append(f"• {v_name} ⬅️ {t_name}")
 
     caught = (most_voted_id == spy_id)
@@ -892,7 +1048,6 @@ def finish_spy_game(chat_id):
         f"📝 تفاصيل الأصوات:\n" + ("\n".join(votes_lines) if votes_lines else "مفيش أصوات")
     )
     bot.send_message(chat_id, result_text, parse_mode="HTML")
-    del active_games[chat_id]
 
 
 # ================= 4. الرد التلقائي على الكلمات (بدون ريبلاي + داخل الجملة) =================
